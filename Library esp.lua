@@ -1,6 +1,5 @@
--- ESP Library por dhsoares01 (versão aprimorada)
--- Suporte a: Tracer, Outline, Box3D, Distance, Name
--- Corrige reaparecimento após render reset
+-- ESP Library por dhsoares01 (versão final e funcional)
+-- Recriação de Highlight, Tracer, Name e Distance corrigidos
 
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -10,6 +9,7 @@ local LocalPlayer = Players.LocalPlayer
 local ESP = {}
 ESP.Objects = {}
 
+-- Adiciona objeto com opções
 function ESP:AddObject(target, options)
 	if not target then return end
 	options = options or {}
@@ -32,6 +32,7 @@ function ESP:AddObject(target, options)
 	})
 end
 
+-- Remove tudo
 function ESP:RemoveAll()
 	for _, obj in ipairs(ESP.Objects) do
 		if obj.Highlight then obj.Highlight:Destroy() end
@@ -41,9 +42,9 @@ function ESP:RemoveAll()
 	ESP.Objects = {}
 end
 
--- Atualização por frame
+-- Loop de renderização
 RunService.RenderStepped:Connect(function()
-	for i, obj in ipairs(ESP.Objects) do
+	for _, obj in ipairs(ESP.Objects) do
 		local target = obj.Target
 		if not target or not target:IsDescendantOf(workspace) then continue end
 
@@ -62,7 +63,7 @@ RunService.RenderStepped:Connect(function()
 		local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
 		local distance = (Camera.CFrame.Position - pos).Magnitude
 
-		-- [1] RECRIAR HIGHLIGHT SE SUMIU (recarregamento, estante, transição)
+		-- Recriar Highlight (Outline/Box3D)
 		if config.Outline then
 			if not obj.Highlight or not obj.Highlight:IsDescendantOf(workspace) then
 				local h = Instance.new("Highlight")
@@ -82,7 +83,7 @@ RunService.RenderStepped:Connect(function()
 			obj.Highlight = nil
 		end
 
-		-- [2] TRACER (Linha até o pé da tela)
+		-- Tracer (linha da base da tela até o objeto)
 		if config.Tracer then
 			if not obj.TracerLine then
 				local line = Drawing.new("Line")
@@ -103,25 +104,25 @@ RunService.RenderStepped:Connect(function()
 			obj.TracerLine.Visible = false
 		end
 
-		-- [3] NOME + DISTÂNCIA (Texto flutuante)
+		-- Name + Distance (texto flutuante)
 		if config.Name or config.Distance then
 			if not obj.NameLabel then
 				local label = Drawing.new("Text")
 				label.Color = Color3.fromRGB(255, 255, 255)
-				label.Size = 16
+				label.Size = 15
 				label.Center = true
 				label.Outline = true
 				label.Font = 2
 				obj.NameLabel = label
 			end
 
-			local text = ""
-			if config.Name then text = config.Name end
-			if config.Distance then text = text .. string.format(" (%.1fm)", distance) end
+			local texto = ""
+			if config.Name then texto = config.Name end
+			if config.Distance then texto = texto .. string.format(" (%.1fm)", distance) end
 
 			if onScreen then
-				obj.NameLabel.Text = text
-				obj.NameLabel.Position = Vector2.new(screenPos.X, screenPos.Y - 14)
+				obj.NameLabel.Text = texto
+				obj.NameLabel.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
 				obj.NameLabel.Visible = true
 			else
 				obj.NameLabel.Visible = false
