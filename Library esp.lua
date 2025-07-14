@@ -1,5 +1,5 @@
--- ESP Library by dhsoares01
--- Orientado por referência de endereço ex: Workspace.room.door["1"]
+-- ESP Library by dhsoares01 (Atualizada)
+-- Suporte a offsets e destruição automática
 
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
@@ -21,7 +21,8 @@ ESP.Settings = {
     BoxColor = Color3.fromRGB(0, 255, 0),
     TextColor = Color3.fromRGB(255, 255, 255),
     OutlineColor = Color3.fromRGB(255, 255, 0),
-    TextSize = 14
+    TextSize = 14,
+    PositionMode = "Top" -- Opções: "Top", "Center", "Bottom", "LeftCenter", "RightCenter"
 }
 
 -- Função utilitária para desenhar UI
@@ -31,6 +32,30 @@ local function createDrawing(type, props)
         obj[i] = v
     end
     return obj
+end
+
+-- Função para calcular posição 2D baseada no modo
+local function getScreenPosition(part)
+    local pos = Camera:WorldToViewportPoint(part.Position)
+    local offset = Vector3.new()
+
+    local y = part.Size.Y / 2
+    local x = part.Size.X / 2
+
+    if ESP.Settings.PositionMode == "Top" then
+        offset = Vector3.new(0, y, 0)
+    elseif ESP.Settings.PositionMode == "Bottom" then
+        offset = Vector3.new(0, -y, 0)
+    elseif ESP.Settings.PositionMode == "Center" then
+        offset = Vector3.zero
+    elseif ESP.Settings.PositionMode == "LeftCenter" then
+        offset = Vector3.new(-x, 0, 0)
+    elseif ESP.Settings.PositionMode == "RightCenter" then
+        offset = Vector3.new(x, 0, 0)
+    end
+
+    local worldPos = part.Position + offset
+    return Camera:WorldToViewportPoint(worldPos)
 end
 
 -- Adiciona um objeto
@@ -52,14 +77,25 @@ end
 RunService.RenderStepped:Connect(function()
     if not ESP.Enabled then return end
 
-    for i, obj in pairs(ESP.Objects) do
+    for i = #ESP.Objects, 1, -1 do
+        local obj = ESP.Objects[i]
         local target = obj.Target
-        if not target or not target.Parent then continue end
+
+        if not target or not target.Parent then
+            -- Remove objetos mortos
+            if obj.Highlight then pcall(function() obj.Highlight:Destroy() end) end
+            for _, v in ipairs({"Line", "Box", "NameLabel", "DistanceLabel"}) do
+                if obj[v] then pcall(function() obj[v]:Remove() end) end
+            end
+            table.remove(ESP.Objects, i)
+            continue
+        end
 
         local part = target:IsA("Model") and target:FindFirstChildWhichIsA("BasePart") or target
         if not part then continue end
 
-        local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+        local pos, onScreen = getScreenPosition(part)
+
         if not onScreen then
             obj.Line.Visible = false
             obj.Box.Visible = false
@@ -68,11 +104,13 @@ RunService.RenderStepped:Connect(function()
             continue
         end
 
+        local screenPos = Vector2.new(pos.X, pos.Y)
+
         -- Line
         if ESP.Settings.ShowLine then
             obj.Line.Visible = true
             obj.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            obj.Line.To = Vector2.new(pos.X, pos.Y)
+            obj.Line.To = screenPos
             obj.Line.Color = ESP.Settings.LineColor
         else
             obj.Line.Visible = false
@@ -80,10 +118,11 @@ RunService.RenderStepped:Connect(function()
 
         -- Box
         if ESP.Settings.ShowBox then
-            local size = (Camera:WorldToViewportPoint(part.Position + part.Size / 2) - Camera:WorldToViewportPoint(part.Position - part.Size / 2)).Magnitude
+            local sizeVec = (Camera:WorldToViewportPoint(part.Position + part.Size / 2) - Camera:WorldToViewportPoint(part.Position - part.Size / 2))
+            local size = Vector2.new(math.abs(sizeVec.X), math.abs(sizeVec.Y))
             obj.Box.Visible = true
-            obj.Box.Size = Vector2.new(size, size)
-            obj.Box.Position = Vector2.new(pos.X - size/2, pos.Y - size/2)
+            obj.Box.Size = size
+            obj.Box.Position = Vector2.new(screenPos.X - size.X/2, screenPos.Y - size.Y/2)
             obj.Box.Color = ESP.Settings.BoxColor
         else
             obj.Box.Visible = false
@@ -92,7 +131,7 @@ RunService.RenderStepped:Connect(function()
         -- Text (Name)
         if ESP.Settings.ShowName then
             obj.NameLabel.Visible = true
-            obj.NameLabel.Position = Vector2.new(pos.X, pos.Y - 20)
+            obj.NameLabel.Position = screenPos - Vector2.new(0, 20)
             obj.NameLabel.Text = obj.Name
             obj.NameLabel.Color = ESP.Settings.TextColor
         else
@@ -103,7 +142,7 @@ RunService.RenderStepped:Connect(function()
         if ESP.Settings.ShowDistance then
             local dist = math.floor((Camera.CFrame.Position - part.Position).Magnitude)
             obj.DistanceLabel.Visible = true
-            obj.DistanceLabel.Position = Vector2.new(pos.X, pos.Y + 15)
+            obj.DistanceLabel.Position = screenPos + Vector2.new(0, 15)
             obj.DistanceLabel.Text = tostring(dist) .. "m"
             obj.DistanceLabel.Color = ESP.Settings.TextColor
         else
@@ -126,6 +165,11 @@ end)
 -- Ativa ou desativa
 function ESP:SetEnabled(bool)
     self.Enabled = bool
+end
+
+-- Muda o modo de posição dos textos
+function ESP:SetPositionMode(mode)
+    ESP.Settings.PositionMode = mode
 end
 
 return ESP
