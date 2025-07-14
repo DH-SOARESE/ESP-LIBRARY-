@@ -1,6 +1,4 @@
--- ESP Library por dhsoares01 (versão final e funcional)
--- Recriação de Highlight, Tracer, Name e Distance corrigidos
-
+-- ESP Library (versão com reparentamento de Highlight)
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local Camera = workspace.CurrentCamera
@@ -9,7 +7,6 @@ local LocalPlayer = Players.LocalPlayer
 local ESP = {}
 ESP.Objects = {}
 
--- Adiciona objeto com opções
 function ESP:AddObject(target, options)
 	if not target then return end
 	options = options or {}
@@ -32,7 +29,6 @@ function ESP:AddObject(target, options)
 	})
 end
 
--- Remove tudo
 function ESP:RemoveAll()
 	for _, obj in ipairs(ESP.Objects) do
 		if obj.Highlight then obj.Highlight:Destroy() end
@@ -42,7 +38,6 @@ function ESP:RemoveAll()
 	ESP.Objects = {}
 end
 
--- Loop de renderização
 RunService.RenderStepped:Connect(function()
 	for _, obj in ipairs(ESP.Objects) do
 		local target = obj.Target
@@ -63,27 +58,28 @@ RunService.RenderStepped:Connect(function()
 		local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
 		local distance = (Camera.CFrame.Position - pos).Magnitude
 
-		-- Recriar Highlight (Outline/Box3D)
+		-- ✅ Highlight reaparece ao reatribuir o Parent e Adornee
 		if config.Outline then
-			if not obj.Highlight or not obj.Highlight:IsDescendantOf(workspace) then
+			if not obj.Highlight then
 				local h = Instance.new("Highlight")
-				h.Adornee = target
+				h.Name = "_ESPHighlight"
 				h.FillColor = Color3.fromRGB(255, 0, 0)
-				h.FillTransparency = config.Box3D and 0.5 or 1
 				h.OutlineColor = Color3.fromRGB(255, 255, 255)
-				h.OutlineTransparency = 0
 				h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-				h.Parent = target
+				h.FillTransparency = config.Box3D and 0.5 or 1
+				h.OutlineTransparency = 0
 				obj.Highlight = h
-			else
-				obj.Highlight.FillTransparency = config.Box3D and 0.5 or 1
 			end
+
+			obj.Highlight.Adornee = target
+			obj.Highlight.FillTransparency = config.Box3D and 0.5 or 1
+			obj.Highlight.Parent = target
 		elseif obj.Highlight then
 			obj.Highlight:Destroy()
 			obj.Highlight = nil
 		end
 
-		-- Tracer (linha da base da tela até o objeto)
+		-- ✅ Tracer
 		if config.Tracer then
 			if not obj.TracerLine then
 				local line = Drawing.new("Line")
@@ -104,7 +100,7 @@ RunService.RenderStepped:Connect(function()
 			obj.TracerLine.Visible = false
 		end
 
-		-- Name + Distance (texto flutuante)
+		-- ✅ Name + Distance
 		if config.Name or config.Distance then
 			if not obj.NameLabel then
 				local label = Drawing.new("Text")
