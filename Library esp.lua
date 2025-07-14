@@ -1,252 +1,131 @@
--- ESP Library for Roblox (Modified for Generic Objects)
--- Features: ESP Line, ESP Box, ESP Name, ESP Distance, ESP Contour
--- Compatible with Delta and similar executors
--- Supports specific objects like Doors
+-- ESP Library by dhsoares01
+-- Orientado por referência de endereço ex: Workspace.room.door["1"]
+
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
 local ESP = {}
-ESP.__index = ESP
+ESP.Objects = {}
+ESP.Enabled = true
 
--- Services
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-
--- Local Player
-local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
-
--- ESP Settings
+-- Configurações padrão
 ESP.Settings = {
-    Enabled = true,
-    Line = true,
-    Box = true,
-    Name = true,
-    Distance = true,
-    Contour = true,
+    ShowLine = true,
+    ShowBox = true,
+    ShowName = true,
+    ShowDistance = true,
+    ShowOutline = true,
     LineColor = Color3.fromRGB(255, 0, 0),
     BoxColor = Color3.fromRGB(0, 255, 0),
-    NameColor = Color3.fromRGB(255, 255, 255),
-    DistanceColor = Color3.fromRGB(255, 255, 255),
-    ContourColor = Color3.fromRGB(255, 255, 0),
-    LineThickness = 2,
-    ContourThickness = 3,
-    TextSize = 16,
-    MaxDistance = 500,
-    TeamCheck = false -- Not applicable for doors
+    TextColor = Color3.fromRGB(255, 255, 255),
+    OutlineColor = Color3.fromRGB(255, 255, 0),
+    TextSize = 14
 }
 
--- Cache for ESP objects
-ESP.Objects = {}
-
--- Create new ESP instance
-function ESP.new(target)
-    local self = setmetatable({}, ESP)
-    self.Target = target
-    self.Drawings = {}
-    self:Setup()
-    return self
+-- Função utilitária para desenhar UI
+local function createDrawing(type, props)
+    local obj = Drawing.new(type)
+    for i, v in pairs(props) do
+        obj[i] = v
+    end
+    return obj
 end
 
--- Setup ESP drawings
-function ESP:Setup()
-    local target = self.Target
-    if not target or not target:IsDescendantOf(Workspace) then
-        return
-    end
+-- Adiciona um objeto
+function ESP:Add(path: Instance, nameOverride)
+    if not path or not path:IsA("BasePart") and not path:IsA("Model") then return end
 
-    -- Determine the part to track (PrimaryPart or any BasePart)
-    local targetPart = target:IsA("Model") and target.PrimaryPart or target:IsA("BasePart") and target or nil
-    if not targetPart then
-        return
-    end
-
-    -- ESP Line
-    if ESP.Settings.Line then
-        local line = Drawing.new("Line")
-        line.Visible = false
-        line.Color = ESP.Settings.LineColor
-        line.Thickness = ESP.Settings.LineThickness
-        line.Transparency = 1
-        self.Drawings.Line = line
-    end
-
-    -- ESP Box
-    if ESP.Settings.Box then
-        local box = Drawing.new("Square")
-        box.Visible = false
-        box.Color = ESP.Settings.BoxColor
-        box.Thickness = 1
-        box.Filled = false
-        box.Transparency = 1
-        self.Drawings.Box = box
-    end
-
-    -- ESP Name
-    if ESP.Settings.Name then
-        local name = Drawing.new("Text")
-        name.Visible = false
-        name.Color = ESP.Settings.NameColor
-        name.Size = ESP.Settings.TextSize
-        name.Center = true
-        name.Outline = true
-        name.Text = target.Name
-        self.Drawings.Name = name
-    end
-
-    -- ESP Distance
-    if ESP.Settings.Distance then
-        local distance = Drawing.new("Text")
-        distance.Visible = false
-        distance.Color = ESP.Settings.DistanceColor
-        distance.Size = ESP.Settings.TextSize
-        distance.Center = true
-        distance.Outline = true
-        self.Drawings.Distance = distance
-    end
-
-    -- ESP Contour
-    if ESP.Settings.Contour then
-        local contour = Drawing.new("Square")
-        contour.Visible = false
-        contour.Color = ESP.Settings.ContourColor
-        contour.Thickness = ESP.Settings.ContourThickness
-        contour.Filled = false
-        contour.Transparency = 1
-        self.Drawings.Contour = contour
-    end
+    table.insert(self.Objects, {
+        Target = path,
+        Name = nameOverride or path.Name,
+        Highlight = ESP.Settings.ShowOutline and Instance.new("Highlight", path),
+        Line = createDrawing("Line", {Thickness = 1.5, Color = self.Settings.LineColor, Visible = false}),
+        Box = createDrawing("Square", {Thickness = 1, Color = self.Settings.BoxColor, Visible = false, Filled = false}),
+        NameLabel = createDrawing("Text", {Size = self.Settings.TextSize, Color = self.Settings.TextColor, Center = true, Visible = false, Outline = true}),
+        DistanceLabel = createDrawing("Text", {Size = self.Settings.TextSize, Color = self.Settings.TextColor, Center = true, Visible = false, Outline = true}),
+    })
 end
 
--- Update ESP drawings
-function ESP:Update()
-    if not ESP.Settings.Enabled or not self.Target or not self.Target:IsDescendantOf(Workspace) then
-        self:Destroy()
-        return
-    end
-
-    -- Get the part to track
-    local targetPart = self.Target:IsA("Model") and self.Target.PrimaryPart or self.Target:IsA("BasePart") and self.Target or nil
-    if not targetPart then
-        self:Destroy()
-        return
-    end
-
-    -- Get 3D position
-    local rootPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
-    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-
-    if onScreen and distance <= ESP.Settings.MaxDistance then
-        -- ESP Line
-        if self.Drawings.Line then
-            self.Drawings.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            self.Drawings.Line.To = Vector2.new(rootPos.X, rootPos.Y)
-            self.Drawings.Line.Visible = true
-        end
-
-        -- ESP Box
-        if self.Drawings.Box then
-            local boxSize = Vector2.new(2000 / rootPos.Z, 3000 / rootPos.Z) -- Adjust size based on distance
-            self.Drawings.Box.Size = boxSize
-            self.Drawings.Box.Position = Vector2.new(rootPos.X - boxSize.X / 2, rootPos.Y - boxSize.Y / 2)
-            self.Drawings.Box.Visible = true
-        end
-
-        -- ESP Name
-        if self.Drawings.Name then
-            self.Drawings.Name.Position = Vector2.new(rootPos.X, rootPos.Y - 30)
-            self.Drawings.Name.Visible = true
-        end
-
-        -- ESP Distance
-        if self.Drawings.Distance then
-            self.Drawings.Distance.Text = math.floor(distance) .. " studs"
-            self.Drawings.Distance.Position = Vector2.new(rootPos.X, rootPos.Y + 10)
-            self.Drawings.Distance.Visible = true
-        end
-
-        -- ESP Contour
-        if self.Drawings.Contour then
-            local contourSize = Vector2.new(2200 / rootPos.Z, 3200 / rootPos.Z) -- Slightly larger than box
-            self.Drawings.Contour.Size = contourSize
-            self.Drawings.Contour.Position = Vector2.new(rootPos.X - contourSize.X / 2, rootPos.Y - contourSize.Y / 2)
-            self.Drawings.Contour.Visible = true
-        end
-    else
-        for _, drawing in pairs(self.Drawings) do
-            drawing.Visible = false
-        end
-    end
-end
-
--- Destroy ESP instance
-function ESP:Destroy()
-    for _, drawing in pairs(self.Drawings) do
-        drawing:Remove()
-    end
-    self.Drawings = {}
-    ESP.Objects[self.Target] = nil
-end
-
--- Initialize ESP for a specific object
-function ESP:InitForObject(target)
-    if target and target:IsDescendantOf(Workspace) then
-        ESP.Objects[target] = ESP.new(target)
-    end
-end
-
--- Initialize ESP for all objects in a folder (e.g., CurrentRooms)
-function ESP:InitForFolder(folder)
-    -- Clear existing ESPs
-    for _, esp in pairs(ESP.Objects) do
-        esp:Destroy()
-    end
-    ESP.Objects = {}
-
-    -- Scan folder for valid objects
-    for _, object in pairs(folder:GetDescendants()) do
-        if (object:IsA("Model") and object.PrimaryPart) or object:IsA("BasePart") then
-            ESP.Objects[object] = ESP.new(object)
-        end
-    end
-
-    -- Handle new objects
-    folder.DescendantAdded:Connect(function(descendant)
-        if (descendant:IsA("Model") and descendant.PrimaryPart) or descendant:IsA("BasePart") then
-            ESP.Objects[descendant] = ESP.new(descendant)
-        end
-    end)
-
-    -- Handle removed objects
-    folder.DescendantRemoving:Connect(function(descendant)
-        if ESP.Objects[descendant] then
-            ESP.Objects[descendant]:Destroy()
-        end
-    end)
-end
-
--- Update loop
+-- Atualiza a renderização
 RunService.RenderStepped:Connect(function()
-    if not ESP.Settings.Enabled then return end
-    for _, esp in pairs(ESP.Objects) do
-        esp:Update()
+    if not ESP.Enabled then return end
+
+    for i, obj in pairs(ESP.Objects) do
+        local target = obj.Target
+        if not target or not target.Parent then continue end
+
+        local part = target:IsA("Model") and target:FindFirstChildWhichIsA("BasePart") or target
+        if not part then continue end
+
+        local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+        if not onScreen then
+            obj.Line.Visible = false
+            obj.Box.Visible = false
+            obj.NameLabel.Visible = false
+            obj.DistanceLabel.Visible = false
+            continue
+        end
+
+        -- Line
+        if ESP.Settings.ShowLine then
+            obj.Line.Visible = true
+            obj.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+            obj.Line.To = Vector2.new(pos.X, pos.Y)
+            obj.Line.Color = ESP.Settings.LineColor
+        else
+            obj.Line.Visible = false
+        end
+
+        -- Box
+        if ESP.Settings.ShowBox then
+            local size = (Camera:WorldToViewportPoint(part.Position + part.Size / 2) - Camera:WorldToViewportPoint(part.Position - part.Size / 2)).Magnitude
+            obj.Box.Visible = true
+            obj.Box.Size = Vector2.new(size, size)
+            obj.Box.Position = Vector2.new(pos.X - size/2, pos.Y - size/2)
+            obj.Box.Color = ESP.Settings.BoxColor
+        else
+            obj.Box.Visible = false
+        end
+
+        -- Text (Name)
+        if ESP.Settings.ShowName then
+            obj.NameLabel.Visible = true
+            obj.NameLabel.Position = Vector2.new(pos.X, pos.Y - 20)
+            obj.NameLabel.Text = obj.Name
+            obj.NameLabel.Color = ESP.Settings.TextColor
+        else
+            obj.NameLabel.Visible = false
+        end
+
+        -- Distance
+        if ESP.Settings.ShowDistance then
+            local dist = math.floor((Camera.CFrame.Position - part.Position).Magnitude)
+            obj.DistanceLabel.Visible = true
+            obj.DistanceLabel.Position = Vector2.new(pos.X, pos.Y + 15)
+            obj.DistanceLabel.Text = tostring(dist) .. "m"
+            obj.DistanceLabel.Color = ESP.Settings.TextColor
+        else
+            obj.DistanceLabel.Visible = false
+        end
+
+        -- Outline
+        if ESP.Settings.ShowOutline and obj.Highlight then
+            obj.Highlight.Enabled = true
+            obj.Highlight.FillTransparency = 1
+            obj.Highlight.OutlineTransparency = 0
+            obj.Highlight.OutlineColor = ESP.Settings.OutlineColor
+            obj.Highlight.Adornee = target
+        elseif obj.Highlight then
+            obj.Highlight.Enabled = false
+        end
     end
 end)
 
--- Toggle ESP
-function ESP:Toggle(state)
-    ESP.Settings.Enabled = state
-    for _, esp in pairs(ESP.Objects) do
-        for _, drawing in pairs(esp.Drawings) do
-            drawing.Visible = false
-        end
-    end
+-- Ativa ou desativa
+function ESP:SetEnabled(bool)
+    self.Enabled = bool
 end
 
--- Configure ESP settings
-function ESP:Configure(settings)
-    for key, value in pairs(settings) do
-        ESP.Settings[key] = value
-    end
-end
-
--- Return the ESP library
 return ESP
