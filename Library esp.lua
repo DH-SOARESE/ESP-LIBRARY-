@@ -1,114 +1,140 @@
---[[  
-ESP Library - Orientada a objetos
-Suporta:
-• Line
-• Box
-• Name
-• Distance
-• Contorno
-]]
+-- ESP Library orientada a endereço de objetos
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
 local ESP = {}
-ESP.Objects = {}  -- tabela para guardar os objetos registrados
-ESP.Settings = {
-    Line = true,
-    Box = true,
-    Name = true,
-    Distance = true,
-    Contorno = true
+ESP.Enabled = true
+ESP.Objects = {}
+
+-- Configurações padrão
+ESP.Options = {
+	ShowLine = true,
+	ShowBox = true,
+	ShowName = true,
+	ShowDistance = true,
+	ShowOutline = true,
+	Color = Color3.fromRGB(0, 255, 0),
+	Font = Enum.Font.SourceSansBold,
+	TextSize = 13,
 }
 
--- Cria BillboardGui helper
-local function createBillboard(name, distance)
-    local billboard = Instance.new("BillboardGui")
-    billboard.Size = UDim2.new(0, 200, 0, 50)
-    billboard.AlwaysOnTop = true
-    billboard.StudsOffset = Vector3.new(0, 2, 0)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = string.format("%s | %.0fm", name, distance)
-    label.TextColor3 = Color3.new(1, 1, 1)
-    label.TextStrokeTransparency = 0
-    label.TextScaled = true
-    label.Parent = billboard
-    return billboard
+-- Função para criar um desenho
+local function CreateDrawing(class, properties)
+	local obj = Drawing.new(class)
+	for i, v in pairs(properties) do
+		obj[i] = v
+	end
+	return obj
 end
 
--- Função para adicionar ESP ao objeto
-function ESP:Add(Object, DisplayName)
-    if not Object:IsA("BasePart") then return end
+-- Adiciona um objeto na ESP
+function ESP:Add(objRef, customName)
+	if not objRef:IsA("BasePart") then return end
 
-    local espItem = {}
-    espItem.Object = Object
-    espItem.DisplayName = DisplayName or Object.Name
+	local espItem = {
+		Target = objRef,
+		Name = customName or objRef.Name,
 
-    -- Billboard para nome + distância
-    if ESP.Settings.Name or ESP.Settings.Distance then
-        local distance = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - Object.Position).Magnitude
-        espItem.Billboard = createBillboard(espItem.DisplayName, distance / 3.571)  -- metros (aprox)
-        espItem.Billboard.Parent = Object
-    end
+		Line = CreateDrawing("Line", {Thickness = 1.5, Transparency = 1, Color = self.Options.Color, Visible = false}),
+		Box = CreateDrawing("Square", {Thickness = 1, Transparency = 1, Color = self.Options.Color, Visible = false}),
+		Text = CreateDrawing("Text", {
+			Size = self.Options.TextSize,
+			Center = true,
+			Outline = true,
+			Font = self.Options.Font,
+			Color = self.Options.Color,
+			Visible = false,
+		}),
+		Outline = CreateDrawing("Square", {
+			Thickness = 3,
+			Transparency = 0.6,
+			Color = Color3.new(0, 0, 0),
+			Visible = false,
+		})
+	}
 
-    -- BoxHighlight para contorno
-    if ESP.Settings.Contorno then
-        local highlight = Instance.new("BoxHandleAdornment")
-        highlight.Size = Object.Size
-        highlight.Adornee = Object
-        highlight.AlwaysOnTop = true
-        highlight.ZIndex = 0
-        highlight.Color3 = Color3.new(1, 1, 1)
-        highlight.Transparency = 0.5
-        highlight.Parent = Object
-        espItem.Highlight = highlight
-    end
-
-    table.insert(ESP.Objects, espItem)
+	table.insert(self.Objects, espItem)
 end
 
--- Desenha linhas e atualiza distância em loop
-function ESP:Enable()
-    local runService = game:GetService("RunService")
-    ESP.Connection = runService.RenderStepped:Connect(function()
-        for _, esp in ipairs(ESP.Objects) do
-            local obj = esp.Object
-            if obj and obj.Parent then
-                local playerPos = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and game.Players.LocalPlayer.Character.HumanoidRootPart.Position
-                if playerPos then
-                    local distance = (playerPos - obj.Position).Magnitude / 3.571
+-- Atualiza e desenha todos os ESPs
+RunService.RenderStepped:Connect(function()
+	if not ESP.Enabled then return end
 
-                    -- Atualiza texto do Billboard
-                    if esp.Billboard then
-                        esp.Billboard.TextLabel.Text = string.format("%s | %.0fm", esp.DisplayName, distance)
-                    end
+	for _, esp in pairs(ESP.Objects) do
+		local obj = esp.Target
+		if obj and obj:IsDescendantOf(workspace) then
+			local pos, onScreen = Camera:WorldToViewportPoint(obj.Position)
+			if onScreen then
+				local screenX, screenY = pos.X, pos.Y
+				local distance = (Camera.CFrame.Position - obj.Position).Magnitude
+				local sizeFactor = math.clamp(1000 / distance, 2, 50)
 
-                    -- Desenhar Line (ScreenGui + Frame)
-                    if ESP.Settings.Line then
-                        -- Você pode usar Drawing API se preferir (mais leve e flexível)
-                    end
+				-- Linha
+				if ESP.Options.ShowLine then
+					esp.Line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+					esp.Line.To = Vector2.new(screenX, screenY)
+					esp.Line.Visible = true
+				else
+					esp.Line.Visible = false
+				end
 
-                    -- Atualiza BoxHighlight (já fica automático)
-                end
-            end
-        end
-    end)
-end
+				-- Caixa e contorno
+				if ESP.Options.ShowBox then
+					local boxSize = Vector2.new(sizeFactor, sizeFactor * 1.5)
+					esp.Box.Size = boxSize
+					esp.Box.Position = Vector2.new(screenX, screenY) - boxSize / 2
+					esp.Box.Visible = true
 
--- Função para desligar ESP
-function ESP:Disable()
-    if ESP.Connection then ESP.Connection:Disconnect() end
-    for _, esp in ipairs(ESP.Objects) do
-        if esp.Billboard then esp.Billboard:Destroy() end
-        if esp.Highlight then esp.Highlight:Destroy() end
-    end
-    ESP.Objects = {}
-end
+					if ESP.Options.ShowOutline then
+						esp.Outline.Size = boxSize + Vector2.new(4, 4)
+						esp.Outline.Position = esp.Box.Position - Vector2.new(2, 2)
+						esp.Outline.Visible = true
+					else
+						esp.Outline.Visible = false
+					end
+				else
+					esp.Box.Visible = false
+					esp.Outline.Visible = false
+				end
 
--- Configurar opções
+				-- Nome + Distância
+				if ESP.Options.ShowName or ESP.Options.ShowDistance then
+					local text = ""
+					if ESP.Options.ShowName then
+						text = esp.Name
+					end
+					if ESP.Options.ShowDistance then
+						text = text .. string.format(" [%.1fm]", distance)
+					end
+					esp.Text.Text = text
+					esp.Text.Position = Vector2.new(screenX, screenY - (sizeFactor * 1.5) / 2 - 14)
+					esp.Text.Visible = true
+				else
+					esp.Text.Visible = false
+				end
+
+			else
+				esp.Line.Visible = false
+				esp.Box.Visible = false
+				esp.Text.Visible = false
+				esp.Outline.Visible = false
+			end
+		end
+	end
+end)
+
+-- Permite mudar opções externas
 function ESP:SetOption(option, value)
-    if ESP.Settings[option] ~= nil then
-        ESP.Settings[option] = value
-    end
+	if self.Options[option] ~= nil then
+		self.Options[option] = value
+	end
+end
+
+-- Liga ou desliga o ESP
+function ESP:SetEnabled(state)
+	self.Enabled = state
 end
 
 return ESP
