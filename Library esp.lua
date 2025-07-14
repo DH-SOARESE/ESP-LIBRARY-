@@ -59,28 +59,29 @@ RunService.RenderStepped:Connect(function()
 		local distance = (Camera.CFrame.Position - pos).Magnitude
 
 		-- 🔲 Outline (Highlight)
-		if config.Outline then
-			if not obj.Highlight or not obj.Highlight.Parent then
-				local h = Instance.new("Highlight")
-				h.Name = "_ESPHighlight"
-				h.FillColor = Color3.fromRGB(255, 0, 0)
-				h.OutlineColor = Color3.fromRGB(255, 255, 255)
-				h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-				h.FillTransparency = config.Box3D and 0.5 or 1
-				h.OutlineTransparency = 0
-				h.Adornee = target
-				h.Parent = target
-				obj.Highlight = h
-			else
-				obj.Highlight.Adornee = target
-				obj.Highlight.FillTransparency = config.Box3D and 0.5 or 1
-				obj.Highlight.Parent = target
-			end
-		elseif obj.Highlight then
-			obj.Highlight:Destroy()
-			obj.Highlight = nil
-		end
+if config.Outline then
+	if not obj.Highlight then
+		local h = Instance.new("Highlight")
+		h.Name = "_ESPHighlight"
+		h.FillColor = Color3.fromRGB(255, 0, 0)
+		h.OutlineColor = Color3.fromRGB(255, 255, 255)
+		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		h.FillTransparency = config.Box3D and 0.5 or 1
+		h.OutlineTransparency = 0
+		h.Parent = target
+		obj.Highlight = h
+	end
 
+	-- Força reaparecimento do Highlight (caso visualmente sumido)
+	obj.Highlight.Adornee = nil
+	obj.Highlight.Adornee = target
+	obj.Highlight.FillTransparency = config.Box3D and 0.5 or 1
+	obj.Highlight.Parent = target
+else
+	if obj.Highlight then
+		obj.Highlight:Destroy()
+		obj.Highlight = nil
+	end
 		-- 📍 Tracer (linha até o centro da tela)
 		if config.Tracer then
 			if not obj.TracerLine or typeof(obj.TracerLine) ~= "table" or not obj.TracerLine.Remove then
