@@ -1,5 +1,6 @@
--- ESP Library by dhsoares01
--- Suporte a: Tracer, Outline, Box3D, Distância, Name (definido ao adicionar)
+-- ESP Library por dhsoares01
+-- Suporte a: Tracer, Outline, Box3D, Distance, Name (custom)
+-- Endereço de objetos: Model ou BasePart
 
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -9,108 +10,102 @@ local LocalPlayer = Players.LocalPlayer
 local ESP = {}
 ESP.Objects = {}
 
-function ESP:WorldToScreen(pos)
-	local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
-	return Vector2.new(screenPos.X, screenPos.Y), onScreen, screenPos.Z
-end
+function ESP:AddObject(target, options)
+	if not target then return end
+	options = options or {}
 
-function ESP:CreateLine()
-	local line = Drawing.new("Line")
-	line.Color = Color3.fromRGB(255, 0, 0)
-	line.Thickness = 1.5
-	line.Transparency = 1
-	line.Visible = false
-	return line
-end
-
-function ESP:CreateText()
-	local text = Drawing.new("Text")
-	text.Color = Color3.fromRGB(255, 255, 255)
-	text.Size = 16
-	text.Center = true
-	text.Outline = true
-	text.Transparency = 1
-	text.Visible = false
-	return text
-end
-
-function ESP:AddObject(object, options)
-	if not object or not object:IsA("Model") then return end
-
-	local primary = object:FindFirstChildWhichIsA("BasePart")
-	if not primary then return end
-
-	local data = {
-		Object = object,
-		Primary = primary,
-		Options = options or {},
-		Tracer = options.Tracer and self:CreateLine() or nil,
-		NameText = options.Name and (options.Name ~= "" and options.Name) and self:CreateText() or nil,
-		DistanceText = options.Distance and self:CreateText() or nil,
+	local config = {
+		Target = target,
+		Name = options.Name or target.Name,
+		Tracer = options.Tracer or false,
+		Outline = options.Outline or false,
+		Box3D = options.Box3D or false,
+		Distance = options.Distance or false,
 	}
 
-	-- Highlight (Outline e Box3D)
-	if options.Outline or options.Box3D then
-		local hl = Instance.new("Highlight")
-		hl.Name = "ESP_Highlight"
-		hl.Adornee = object
-		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		hl.FillTransparency = options.Box3D and 0.5 or 1
-		hl.FillColor = Color3.fromRGB(255, 0, 0)
-		hl.OutlineColor = Color3.fromRGB(255, 0, 0)
-		hl.OutlineTransparency = options.Outline and 0 or 1
-		hl.Parent = object
-		data.Highlight = hl
+	local highlight
+	if config.Outline and target:IsA("Model") or target:IsA("BasePart") then
+		highlight = Instance.new("Highlight")
+		highlight.Adornee = target
+		highlight.FillColor = Color3.fromRGB(255, 0, 0)
+		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+		highlight.FillTransparency = config.Box3D and 0.5 or 1
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Parent = target
 	end
 
-	self.Objects[#self.Objects + 1] = data
+	table.insert(ESP.Objects, {
+		Target = target,
+		Config = config,
+		Highlight = highlight
+	})
 end
 
-function ESP:RemoveObject(object)
-	for i, v in ipairs(self.Objects) do
-		if v.Object == object then
-			if v.Tracer then v.Tracer:Remove() end
-			if v.NameText then v.NameText:Remove() end
-			if v.DistanceText then v.DistanceText:Remove() end
-			if v.Highlight and v.Highlight.Parent then v.Highlight:Destroy() end
-			table.remove(self.Objects, i)
-			break
+function ESP:RemoveAll()
+	for _, obj in ipairs(ESP.Objects) do
+		if obj.Highlight then
+			obj.Highlight:Destroy()
 		end
 	end
+	ESP.Objects = {}
 end
 
 RunService.RenderStepped:Connect(function()
-	for i, v in ipairs(ESP.Objects) do
-		local obj = v.Object
-		local part = v.Primary
+	for i, obj in ipairs(ESP.Objects) do
+		local target = obj.Target
+		if not target or not target:IsDescendantOf(workspace) then continue end
 
-		if not obj or not obj.Parent or not part or not part:IsDescendantOf(workspace) then
-			ESP:RemoveObject(obj)
+		local pos
+		if target:IsA("Model") then
+			local primary = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
+			if primary then pos = primary.Position else continue end
+		elseif target:IsA("BasePart") then
+			pos = target.Position
 		else
-			local screenPos, onScreen, distance = ESP:WorldToScreen(part.Position)
-
-			if v.Tracer then
-				v.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-				v.Tracer.To = screenPos
-				v.Tracer.Visible = onScreen
-			end
-
-			if v.NameText then
-				v.NameText.Position = screenPos - Vector2.new(0, 20)
-				v.NameText.Text = v.Options.Name or "Object"
-				v.NameText.Visible = onScreen
-			end
-
-			if v.DistanceText then
-				v.DistanceText.Position = screenPos + Vector2.new(0, 15)
-				v.DistanceText.Text = string.format("%.1f m", distance)
-				v.DistanceText.Visible = onScreen
-			end
-
-			if v.Highlight then
-				v.Highlight.Adornee = obj
-			end
+			continue
 		end
+
+		local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
+		if not onScreen then continue end
+
+		local config = obj.Config
+		local distance = (Camera.CFrame.Position - pos).Magnitude
+
+		if config.Tracer then
+			if not obj.TracerLine then
+				local line = Drawing.new("Line")
+				line.Color = Color3.fromRGB(0, 255, 0)
+				line.Thickness = 1.5
+				line.Transparency = 1
+				line.ZIndex = 2
+				obj.TracerLine = line
+			end
+			obj.TracerLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+			obj.TracerLine.To = Vector2.new(screenPos.X, screenPos.Y)
+			obj.TracerLine.Visible = true
+		elseif obj.TracerLine then
+			obj.TracerLine.Visible = false
+		end
+
+		local text = ""
+		if config.Name then text = config.Name end
+		if config.Distance then
+			text = text .. string.format(" (%.1fm)", distance)
+		end
+
+		if not obj.NameLabel then
+			local label = Drawing.new("Text")
+			label.Color = Color3.new(1, 1, 1)
+			label.Size = 16
+			label.Center = true
+			label.Outline = true
+			label.Font = 2
+			obj.NameLabel = label
+		end
+		obj.NameLabel.Text = text
+		obj.NameLabel.Position = Vector2.new(screenPos.X, screenPos.Y - 10)
+		obj.NameLabel.Visible = true
 	end
 end)
 
