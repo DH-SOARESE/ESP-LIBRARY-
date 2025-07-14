@@ -11,7 +11,7 @@ ESP.Objects = {}
 ESP.Enabled = true
 
 ESP.DefaultSettings = {
-	Name = "ESP", -- Nome padrão mostrado
+	Name = "ESP",
 	ShowName = true,
 	ShowDistance = true,
 	ShowTracer = true,
@@ -33,6 +33,46 @@ local function CreateDrawing(class, props)
 	return obj
 end
 
+local function CreateBillboard(target, settings)
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "_ESP_Billboard"
+	gui.Size = UDim2.new(0, 100, 0, 40)
+	gui.StudsOffset = Vector3.new(0, 3, 0)
+	gui.AlwaysOnTop = true
+	gui.Adornee = target
+	gui.Parent = target
+
+	if settings.ShowName then
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.Name = "Name"
+		nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+		nameLabel.Position = UDim2.new(0, 0, 0, 0)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.TextColor3 = settings.Color
+		nameLabel.TextStrokeTransparency = 0
+		nameLabel.Text = settings.Name
+		nameLabel.TextScaled = true
+		nameLabel.Font = Enum.Font.SourceSansBold
+		nameLabel.Parent = gui
+	end
+
+	if settings.ShowDistance then
+		local distLabel = Instance.new("TextLabel")
+		distLabel.Name = "Distance"
+		distLabel.Size = UDim2.new(1, 0, 0.5, 0)
+		distLabel.Position = UDim2.new(0, 0, 0.5, 0)
+		distLabel.BackgroundTransparency = 1
+		distLabel.TextColor3 = settings.Color
+		distLabel.TextStrokeTransparency = 0
+		distLabel.Text = "0m"
+		distLabel.TextScaled = true
+		distLabel.Font = Enum.Font.SourceSans
+		distLabel.Parent = gui
+	end
+
+	return gui
+end
+
 function ESP:AddObject(target, settings)
 	settings = setmetatable(settings or {}, { __index = self.DefaultSettings })
 	if not target or not target:IsDescendantOf(workspace) then return end
@@ -41,7 +81,8 @@ function ESP:AddObject(target, settings)
 		Target = target,
 		Settings = settings,
 		Drawings = {},
-		Highlight = nil
+		Highlight = nil,
+		Billboard = nil
 	}
 
 	-- Tracer
@@ -50,28 +91,6 @@ function ESP:AddObject(target, settings)
 			Thickness = 1.5,
 			Color = settings.Color,
 			Transparency = 1,
-			Visible = false
-		})
-	end
-
-	-- Name
-	if settings.ShowName then
-		espData.Drawings.Name = CreateDrawing("Text", {
-			Color = settings.Color,
-			Size = 14,
-			Center = true,
-			Outline = true,
-			Visible = false
-		})
-	end
-
-	-- Distance
-	if settings.ShowDistance then
-		espData.Drawings.Distance = CreateDrawing("Text", {
-			Color = settings.Color,
-			Size = 13,
-			Center = true,
-			Outline = true,
 			Visible = false
 		})
 	end
@@ -88,16 +107,22 @@ function ESP:AddObject(target, settings)
 	end
 
 	-- Outline (Highlight)
-	if settings.ShowOutline and target:IsA("Model") or target:IsA("BasePart") then
-		local highlight = Instance.new("Highlight")
-		highlight.Name = "_ESP_Highlight"
-		highlight.FillColor = settings.Color
-		highlight.OutlineColor = settings.Color
-		highlight.FillTransparency = 0.7
-		highlight.OutlineTransparency = 0
-		highlight.Adornee = target
-		highlight.Parent = target
-		espData.Highlight = highlight
+	if settings.ShowOutline and (target:IsA("Model") or target:IsA("BasePart")) then
+		local hl = Instance.new("Highlight")
+		hl.Name = "_ESP_Highlight"
+		hl.FillColor = settings.Color
+		hl.OutlineColor = settings.Color
+		hl.FillTransparency = 0.7
+		hl.OutlineTransparency = 0
+		hl.Adornee = target
+		hl.Parent = target
+		espData.Highlight = hl
+	end
+
+	-- Billboard GUI para Name e Distance
+	if settings.ShowName or settings.ShowDistance then
+		local gui = CreateBillboard(target, settings)
+		espData.Billboard = gui
 	end
 
 	table.insert(self.Objects, espData)
@@ -110,6 +135,9 @@ function ESP:Clear()
 		end
 		if esp.Highlight then
 			pcall(function() esp.Highlight:Destroy() end)
+		end
+		if esp.Billboard then
+			pcall(function() esp.Billboard:Destroy() end)
 		end
 	end
 	self.Objects = {}
@@ -141,32 +169,16 @@ RunService.RenderStepped:Connect(function()
 			line.Visible = true
 		end
 
-		-- Name
-		if settings.ShowName and esp.Drawings.Name then
-			local text = esp.Drawings.Name
-			text.Position = Vector2.new(pos.X, pos.Y - 20)
-			text.Text = settings.Name
-			text.Visible = true
-		end
-
-		-- Distance
-		if settings.ShowDistance and esp.Drawings.Distance then
-			local dtext = esp.Drawings.Distance
-			dtext.Position = Vector2.new(pos.X, pos.Y + 12)
-			dtext.Text = string.format("%.1f m", dist)
-			dtext.Visible = true
-		end
-
 		-- Box 3D
 		if settings.ShowBox3D and esp.Drawings.Box then
 			local box = esp.Drawings.Box
-			local size = Vector2.new(50 / (dist / 10), 80 / (dist / 10)) -- escalar conforme distância
+			local size = Vector2.new(50 / (dist / 10), 80 / (dist / 10))
 			box.Size = size
 			box.Position = Vector2.new(pos.X - size.X / 2, pos.Y - size.Y / 2)
 			box.Visible = true
 		end
 
-		-- Reaplicar highlight caso sumir
+		-- Atualizar Highlight se necessário
 		if settings.ShowOutline and (not esp.Highlight or not esp.Highlight.Parent) then
 			local hl = Instance.new("Highlight")
 			hl.Name = "_ESP_Highlight"
@@ -177,6 +189,14 @@ RunService.RenderStepped:Connect(function()
 			hl.Adornee = target
 			hl.Parent = target
 			esp.Highlight = hl
+		end
+
+		-- Atualizar distância no Billboard
+		if esp.Billboard then
+			local dLabel = esp.Billboard:FindFirstChild("Distance")
+			if dLabel then
+				dLabel.Text = string.format("%.1f m", dist)
+			end
 		end
 	end
 end)
