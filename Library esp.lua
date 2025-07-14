@@ -7,6 +7,7 @@ local LocalPlayer = Players.LocalPlayer
 local ESP = {}
 ESP.Objects = {}
 
+-- Adiciona um novo objeto à ESP
 function ESP:AddObject(target, options)
 	if not target then return end
 	options = options or {}
@@ -29,17 +30,19 @@ function ESP:AddObject(target, options)
 	})
 end
 
+-- Remove todos os objetos ESP e limpa recursos
 function ESP:RemoveAll()
 	for _, obj in ipairs(ESP.Objects) do
 		if obj.Highlight then obj.Highlight:Destroy() end
-		if obj.TracerLine then obj.TracerLine:Remove() end
-		if obj.NameLabel then obj.NameLabel:Remove() end
+		if obj.TracerLine then pcall(function() obj.TracerLine:Remove() end) end
+		if obj.NameLabel then pcall(function() obj.NameLabel:Remove() end) end
 	end
 	ESP.Objects = {}
 end
 
+-- Atualiza os ESPs a cada frame
 RunService.RenderStepped:Connect(function()
-	for _, obj in ipairs(ESP.Objects) do
+	for i, obj in ipairs(ESP.Objects) do
 		local target = obj.Target
 		if not target or not target:IsDescendantOf(workspace) then continue end
 
@@ -58,7 +61,7 @@ RunService.RenderStepped:Connect(function()
 		local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
 		local distance = (Camera.CFrame.Position - pos).Magnitude
 
-		-- ✅ Highlight reaparece ao reatribuir o Parent e Adornee
+		-- 🔲 Outline (Highlight)
 		if config.Outline then
 			if not obj.Highlight then
 				local h = Instance.new("Highlight")
@@ -70,7 +73,6 @@ RunService.RenderStepped:Connect(function()
 				h.OutlineTransparency = 0
 				obj.Highlight = h
 			end
-
 			obj.Highlight.Adornee = target
 			obj.Highlight.FillTransparency = config.Box3D and 0.5 or 1
 			obj.Highlight.Parent = target
@@ -79,7 +81,7 @@ RunService.RenderStepped:Connect(function()
 			obj.Highlight = nil
 		end
 
-		-- ✅ Tracer
+		-- 📍 Tracer (linha até o centro da tela)
 		if config.Tracer then
 			if not obj.TracerLine then
 				local line = Drawing.new("Line")
@@ -100,7 +102,7 @@ RunService.RenderStepped:Connect(function()
 			obj.TracerLine.Visible = false
 		end
 
-		-- ✅ Name + Distance
+		-- 🏷️ Nome + Distância
 		if config.Name or config.Distance then
 			if not obj.NameLabel then
 				local label = Drawing.new("Text")
@@ -112,12 +114,14 @@ RunService.RenderStepped:Connect(function()
 				obj.NameLabel = label
 			end
 
-			local texto = ""
-			if config.Name then texto = config.Name end
-			if config.Distance then texto = texto .. string.format(" (%.1fm)", distance) end
+			local text = ""
+			if config.Name then text = config.Name end
+			if config.Distance then
+				text = text .. string.format(" (%.1fm)", distance)
+			end
 
 			if onScreen then
-				obj.NameLabel.Text = texto
+				obj.NameLabel.Text = text
 				obj.NameLabel.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
 				obj.NameLabel.Visible = true
 			else
