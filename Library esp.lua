@@ -147,7 +147,14 @@ RunService.RenderStepped:Connect(function()
 	if not ESP.Enabled then return end
 	for _, esp in pairs(ESP.Objects) do
 		local target = esp.Target
-		local root = target:IsA("Model") and target:FindFirstChild("HumanoidRootPart") or target:IsA("BasePart") and target or nil
+
+		-- SUPORTE A DISTÂNCIA DE MODELS E BASEPARTS
+		local root
+		if target:IsA("BasePart") then
+			root = target
+		elseif target:IsA("Model") then
+			root = target:FindFirstChild("HumanoidRootPart") or target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
+		end
 		if not root then continue end
 
 		local onscreen, pos = IsOnScreen(root.Position)
@@ -178,7 +185,7 @@ RunService.RenderStepped:Connect(function()
 			box.Visible = true
 		end
 
-		-- Atualizar Highlight se necessário
+		-- Atualizar Highlight
 		if settings.ShowOutline and (not esp.Highlight or not esp.Highlight.Parent) then
 			local hl = Instance.new("Highlight")
 			hl.Name = "_ESP_Highlight"
