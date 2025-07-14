@@ -82,6 +82,7 @@ else
 		obj.Highlight:Destroy()
 		obj.Highlight = nil
 	end
+end
 		-- 📍 Tracer (linha até o centro da tela)
 		if config.Tracer then
 			if not obj.TracerLine or typeof(obj.TracerLine) ~= "table" or not obj.TracerLine.Remove then
