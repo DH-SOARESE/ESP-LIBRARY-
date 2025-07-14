@@ -1,7 +1,7 @@
--- ESP Library for Roblox
+-- ESP Library for Roblox (Modified for Generic Objects)
 -- Features: ESP Line, ESP Box, ESP Name, ESP Distance, ESP Contour
 -- Compatible with Delta and similar executors
--- Host on GitHub and execute via loadstring
+-- Supports specific objects like Doors
 
 local ESP = {}
 ESP.__index = ESP
@@ -28,11 +28,11 @@ ESP.Settings = {
     NameColor = Color3.fromRGB(255, 255, 255),
     DistanceColor = Color3.fromRGB(255, 255, 255),
     ContourColor = Color3.fromRGB(255, 255, 0),
-    LineThickness = 1,
-    ContourThickness = 2,
-    TextSize = 14,
-    MaxDistance = 1000, -- Max distance to render ESP
-    TeamCheck = false -- Set to true to ignore teammates
+    LineThickness = 2,
+    ContourThickness = 3,
+    TextSize = 16,
+    MaxDistance = 500,
+    TeamCheck = false -- Not applicable for doors
 }
 
 -- Cache for ESP objects
@@ -50,7 +50,13 @@ end
 -- Setup ESP drawings
 function ESP:Setup()
     local target = self.Target
-    if not target or not target:IsA("Model") or not target:FindFirstChild("HumanoidRootPart") then
+    if not target or not target:IsDescendantOf(Workspace) then
+        return
+    end
+
+    -- Determine the part to track (PrimaryPart or any BasePart)
+    local targetPart = target:IsA("Model") and target.PrimaryPart or target:IsA("BasePart") and target or nil
+    if not targetPart then
         return
     end
 
@@ -112,30 +118,21 @@ end
 
 -- Update ESP drawings
 function ESP:Update()
-    if not ESP.Settings.Enabled or not self.Target or not self.Target.Parent or not self.Target:FindFirstChild("HumanoidRootPart") then
+    if not ESP.Settings.Enabled or not self.Target or not self.Target:IsDescendantOf(Workspace) then
         self:Destroy()
         return
     end
 
-    local humanoidRootPart = self.Target:FindFirstChild("HumanoidRootPart")
-    local humanoid = self.Target:FindFirstChildOfClass("Humanoid")
-    if not humanoidRootPart or (humanoid and humanoid.Health <= 0) then
+    -- Get the part to track
+    local targetPart = self.Target:IsA("Model") and self.Target.PrimaryPart or self.Target:IsA("BasePart") and self.Target or nil
+    if not targetPart then
         self:Destroy()
         return
-    end
-
-    -- Team check
-    if ESP.Settings.TeamCheck and self.Target:IsA("Model") and self.Target:FindFirstChild("Humanoid") then
-        local player = Players:GetPlayerFromCharacter(self.Target)
-        if player and player.Team == LocalPlayer.Team then
-            self:Destroy()
-            return
-        end
     end
 
     -- Get 3D position
-    local rootPos, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
-    local distance = (Camera.CFrame.Position - humanoidRootPart.Position).Magnitude
+    local rootPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
 
     if onScreen and distance <= ESP.Settings.MaxDistance then
         -- ESP Line
@@ -147,8 +144,6 @@ function ESP:Update()
 
         -- ESP Box
         if self.Drawings.Box then
-            local head = self.Target:FindFirstChild("Head")
-            local headPos = head and Camera:WorldToViewportPoint(head.Position) or rootPos
             local boxSize = Vector2.new(2000 / rootPos.Z, 3000 / rootPos.Z) -- Adjust size based on distance
             self.Drawings.Box.Size = boxSize
             self.Drawings.Box.Position = Vector2.new(rootPos.X - boxSize.X / 2, rootPos.Y - boxSize.Y / 2)
@@ -191,30 +186,37 @@ function ESP:Destroy()
     ESP.Objects[self.Target] = nil
 end
 
--- Initialize ESP for all objects in Workspace
-function ESP:Init()
+-- Initialize ESP for a specific object
+function ESP:InitForObject(target)
+    if target and target:IsDescendantOf(Workspace) then
+        ESP.Objects[target] = ESP.new(target)
+    end
+end
+
+-- Initialize ESP for all objects in a folder (e.g., CurrentRooms)
+function ESP:InitForFolder(folder)
     -- Clear existing ESPs
     for _, esp in pairs(ESP.Objects) do
         esp:Destroy()
     end
     ESP.Objects = {}
 
-    -- Scan Workspace for valid objects
-    for _, object in pairs(Workspace:GetDescendants()) do
-        if object:IsA("Model") and object:FindFirstChild("HumanoidRootPart") and object ~= LocalPlayer.Character then
+    -- Scan folder for valid objects
+    for _, object in pairs(folder:GetDescendants()) do
+        if (object:IsA("Model") and object.PrimaryPart) or object:IsA("BasePart") then
             ESP.Objects[object] = ESP.new(object)
         end
     end
 
     -- Handle new objects
-    Workspace.DescendantAdded:Connect(function(descendant)
-        if descendant:IsA("Model") and descendant:FindFirstChild("HumanoidRootPart") and descendant ~= LocalPlayer.Character then
+    folder.DescendantAdded:Connect(function(descendant)
+        if (descendant:IsA("Model") and descendant.PrimaryPart) or descendant:IsA("BasePart") then
             ESP.Objects[descendant] = ESP.new(descendant)
         end
     end)
 
     -- Handle removed objects
-    Workspace.DescendantRemoving:Connect(function(descendant)
+    folder.DescendantRemoving:Connect(function(descendant)
         if ESP.Objects[descendant] then
             ESP.Objects[descendant]:Destroy()
         end
@@ -244,12 +246,7 @@ function ESP:Configure(settings)
     for key, value in pairs(settings) do
         ESP.Settings[key] = value
     end
-    -- Reinitialize to apply new settings
-    ESP:Init()
 end
-
--- Example usage
-ESP:Init()
 
 -- Return the ESP library
 return ESP
