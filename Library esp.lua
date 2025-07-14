@@ -1,4 +1,4 @@
--- ESP Library (versão com reparentamento de Highlight)
+-- ESP Library (versão forçada com recriação automática)
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local Camera = workspace.CurrentCamera
@@ -7,7 +7,6 @@ local LocalPlayer = Players.LocalPlayer
 local ESP = {}
 ESP.Objects = {}
 
--- Adiciona um novo objeto à ESP
 function ESP:AddObject(target, options)
 	if not target then return end
 	options = options or {}
@@ -30,7 +29,6 @@ function ESP:AddObject(target, options)
 	})
 end
 
--- Remove todos os objetos ESP e limpa recursos
 function ESP:RemoveAll()
 	for _, obj in ipairs(ESP.Objects) do
 		if obj.Highlight then obj.Highlight:Destroy() end
@@ -40,7 +38,6 @@ function ESP:RemoveAll()
 	ESP.Objects = {}
 end
 
--- Atualiza os ESPs a cada frame
 RunService.RenderStepped:Connect(function()
 	for i, obj in ipairs(ESP.Objects) do
 		local target = obj.Target
@@ -63,7 +60,7 @@ RunService.RenderStepped:Connect(function()
 
 		-- 🔲 Outline (Highlight)
 		if config.Outline then
-			if not obj.Highlight then
+			if not obj.Highlight or not obj.Highlight.Parent then
 				local h = Instance.new("Highlight")
 				h.Name = "_ESPHighlight"
 				h.FillColor = Color3.fromRGB(255, 0, 0)
@@ -71,11 +68,14 @@ RunService.RenderStepped:Connect(function()
 				h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 				h.FillTransparency = config.Box3D and 0.5 or 1
 				h.OutlineTransparency = 0
+				h.Adornee = target
+				h.Parent = target
 				obj.Highlight = h
+			else
+				obj.Highlight.Adornee = target
+				obj.Highlight.FillTransparency = config.Box3D and 0.5 or 1
+				obj.Highlight.Parent = target
 			end
-			obj.Highlight.Adornee = target
-			obj.Highlight.FillTransparency = config.Box3D and 0.5 or 1
-			obj.Highlight.Parent = target
 		elseif obj.Highlight then
 			obj.Highlight:Destroy()
 			obj.Highlight = nil
@@ -83,12 +83,13 @@ RunService.RenderStepped:Connect(function()
 
 		-- 📍 Tracer (linha até o centro da tela)
 		if config.Tracer then
-			if not obj.TracerLine then
+			if not obj.TracerLine or typeof(obj.TracerLine) ~= "table" or not obj.TracerLine.Remove then
 				local line = Drawing.new("Line")
 				line.Color = Color3.fromRGB(0, 255, 0)
 				line.Thickness = 1.5
 				line.Transparency = 1
 				line.ZIndex = 2
+				line.Visible = false
 				obj.TracerLine = line
 			end
 			if onScreen then
@@ -104,13 +105,14 @@ RunService.RenderStepped:Connect(function()
 
 		-- 🏷️ Nome + Distância
 		if config.Name or config.Distance then
-			if not obj.NameLabel then
+			if not obj.NameLabel or typeof(obj.NameLabel) ~= "table" or not obj.NameLabel.Remove then
 				local label = Drawing.new("Text")
 				label.Color = Color3.fromRGB(255, 255, 255)
 				label.Size = 15
 				label.Center = true
 				label.Outline = true
 				label.Font = 2
+				label.Visible = false
 				obj.NameLabel = label
 			end
 
