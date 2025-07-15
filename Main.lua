@@ -3,8 +3,8 @@
 local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/DH-SOARESE/UI-LIBRARY-/main/UI%20library.lua"))()
 
 local ESP = loadstring(game:HttpGet("https://raw.githubusercontent.com/DH-SOARESE/ESP-LIBRARY-/refs/heads/main/Library%20esp.lua"))()
-local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/DH-SOARESE/SCRIPT-DOORS/main/ESP/Config.lua"))()
-local Core = loadstring(game:HttpGet("https://raw.githubusercontent.com/DH-SOARESE/SCRIPT-DOORS/main/ESP/Core.lua"))()
+local Config = loadstring(game:HttpGet("https://raw.githubusercontent.com/DH-SOARESE/ESP-LIBRARY-/refs/heads/main/Config.lua"))()
+local Core = loadstring(game:HttpGet("https://raw.githubusercontent.com/DH-SOARESE/ESP-LIBRARY-/refs/heads/main/Core.lua"))()
 
 local Window = OrionLib:MakeWindow({
     Name = "DOORS ESP",
