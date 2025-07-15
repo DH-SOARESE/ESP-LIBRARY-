@@ -223,3 +223,6 @@ task.spawn(function()
         end
     end
 end)
+
+-- Inicializa a UI
+OrionLib:Init()
