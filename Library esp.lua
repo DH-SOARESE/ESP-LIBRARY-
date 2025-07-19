@@ -1,223 +1,177 @@
---[[  
-ESP Library (Model/BasePart based)
-Suporte: Tracer, Outline, Box Outline, Distance, Name
-Uso:
-  ESP:Add(object, {
-    Name = "Objeto XPTO",
-    Color = Color3.fromRGB(255, 255, 0),
-    Tracer = true,
-    Outline = true,
-    Box = true,
-    Distance = true,
-    NameVisible = true
-  })
-
-  ESP:Remove(object)
-  ESP:Clear()
-  ESP:Toggle(true/false)
---]]
-
-local RunService = game:GetService("RunService")
+-- ESP Library by DH - Workspace Oriented
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
 
-local ESP = {
-	Enabled = true,
-	Objects = {}
+local ESP = {}
+ESP.Enabled = true
+ESP.Objects = {}
+ESP.Settings = {
+	ShowTracer = true,
+	ShowBox = true,
+	ShowOutline = true,
+	ShowName = true,
+	ShowDistance = true,
+	Reference = "Bottom", -- "Bottom" or "Center"
+	Color = Color3.fromRGB(0, 255, 0),
+	Font = Enum.Font.SourceSansBold,
 }
 
-local function IsOnScreen(pos)
+-- Utilidade
+local function isOnScreen(pos)
 	local _, onScreen = Camera:WorldToViewportPoint(pos)
 	return onScreen
 end
 
-local function GetDistance(pos)
-	return math.floor((Camera.CFrame.Position - pos).Magnitude)
-end
-
-local function DrawLine()
-	local line = Drawing.new("Line")
-	line.Thickness = 1.5
-	line.Color = Color3.new(1, 1, 1)
-	line.Transparency = 1
-	return line
-end
-
-local function DrawText()
-	local text = Drawing.new("Text")
-	text.Size = 13
-	text.Center = true
-	text.Outline = true
-	text.Font = 2
-	text.Color = Color3.new(1, 1, 1)
-	text.Transparency = 1
-	return text
-end
-
-local function DrawBox()
-	local box = {}
-	box.TopLeft = Drawing.new("Line")
-	box.TopRight = Drawing.new("Line")
-	box.BottomLeft = Drawing.new("Line")
-	box.BottomRight = Drawing.new("Line")
-
-	for _, line in pairs(box) do
-		line.Thickness = 1.5
-		line.Color = Color3.new(1, 1, 1)
-		line.Transparency = 1
+local function getPosition(obj)
+	if obj:IsA("BasePart") then
+		return obj.Position
+	elseif obj:IsA("Model") and obj.PrimaryPart then
+		return obj.PrimaryPart.Position
+	elseif obj:IsA("Model") then
+		local parts = obj:GetDescendants()
+		for _, part in ipairs(parts) do
+			if part:IsA("BasePart") then
+				return part.Position
+			end
+		end
+	elseif obj:IsA("Attachment") then
+		return obj.WorldPosition
 	end
-
-	return box
+	return Vector3.zero
 end
 
-function ESP:Add(object, settings)
-	if not object then return end
-	if self.Objects[object] then return end
+local function round(n)
+	return math.floor(n * 10 + 0.5) / 10
+end
 
-	settings = settings or {}
-	local tracer = settings.Tracer and DrawLine() or nil
-	local nameText = settings.NameVisible and DrawText() or nil
-	local distText = settings.Distance and DrawText() or nil
-	local box = settings.Box and DrawBox() or nil
-	local outline = settings.Outline and Drawing.new("Quad") or nil
+-- Adicionar ESP
+function ESP:Add(obj, customName)
+	if not obj or ESP.Objects[obj] then return end
 
-	if outline then
-		outline.Thickness = 1
-		outline.Transparency = 1
-		outline.Filled = false
-		outline.Color = settings.Color or Color3.new(1, 1, 1)
-	end
+	local name = customName or obj.Name
+	local holder = Drawing.new("Text")
+	holder.Center = true
+	holder.Outline = true
+	holder.Size = 13
+	holder.Font = Drawing.Fonts.UI
+	holder.Color = ESP.Settings.Color
 
-	self.Objects[object] = {
-		Target = object,
-		Settings = settings,
+	local distance = Drawing.new("Text")
+	distance.Center = true
+	distance.Outline = true
+	distance.Size = 12
+	distance.Font = Drawing.Fonts.UI
+	distance.Color = Color3.fromRGB(200, 200, 200)
+
+	local tracer = Drawing.new("Line")
+	tracer.Thickness = 1.5
+	tracer.Color = ESP.Settings.Color
+
+	local box = Drawing.new("Square")
+	box.Thickness = 1.5
+	box.Color = ESP.Settings.Color
+	box.Filled = false
+
+	ESP.Objects[obj] = {
+		Object = obj,
+		Name = holder,
+		Distance = distance,
 		Tracer = tracer,
-		NameText = nameText,
-		DistanceText = distText,
 		Box = box,
-		Outline = outline,
 	}
 end
 
-function ESP:Remove(object)
-	local esp = self.Objects[object]
-	if not esp then return end
-
-	if esp.Tracer then esp.Tracer:Remove() end
-	if esp.NameText then esp.NameText:Remove() end
-	if esp.DistanceText then esp.DistanceText:Remove() end
-	if esp.Outline then esp.Outline:Remove() end
-	if esp.Box then
-		for _, line in pairs(esp.Box) do
-			line:Remove()
+-- Remover ESP
+function ESP:Remove(obj)
+	local esp = ESP.Objects[obj]
+	if esp then
+		for _, v in pairs(esp) do
+			if typeof(v) == "table" or typeof(v) == "Instance" then continue end
+			if typeof(v) == "userdata" and v.Remove then pcall(function() v:Remove() end) end
 		end
+		ESP.Objects[obj] = nil
 	end
-
-	self.Objects[object] = nil
 end
 
-function ESP:Clear()
-	for obj in pairs(self.Objects) do
+-- Loop de renderização
+RunService.RenderStepped:Connect(function()
+	if not ESP.Enabled then return end
+
+	for obj, data in pairs(ESP.Objects) do
+		local ok, pos = pcall(getPosition, obj)
+		if not ok or not pos then ESP:Remove(obj) continue end
+
+		local screenPos, visible = Camera:WorldToViewportPoint(pos)
+		if not visible then
+			data.Name.Visible = false
+			data.Distance.Visible = false
+			data.Tracer.Visible = false
+			data.Box.Visible = false
+			continue
+		end
+
+		local localPlayer = Players.LocalPlayer
+		local char = localPlayer.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+
+		local dist = root and round((root.Position - pos).Magnitude) or 0
+
+		-- Tracer
+		if ESP.Settings.ShowTracer then
+			data.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+			data.Tracer.To = Vector2.new(screenPos.X, screenPos.Y)
+			data.Tracer.Visible = true
+		else
+			data.Tracer.Visible = false
+		end
+
+		-- Nome
+		if ESP.Settings.ShowName then
+			data.Name.Position = Vector2.new(screenPos.X, screenPos.Y - 15)
+			data.Name.Text = obj.Name
+			data.Name.Visible = true
+		else
+			data.Name.Visible = false
+		end
+
+		-- Distância
+		if ESP.Settings.ShowDistance then
+			data.Distance.Position = Vector2.new(screenPos.X, screenPos.Y)
+			data.Distance.Text = "(" .. dist .. "m)"
+			data.Distance.Visible = true
+		else
+			data.Distance.Visible = false
+		end
+
+		-- Box
+		if ESP.Settings.ShowBox and obj:IsA("Model") and obj.PrimaryPart then
+			local size = obj:GetExtentsSize()
+			local screenSize = (Camera:WorldToViewportPoint(obj.PrimaryPart.Position + Vector3.new(size.X/2, size.Y/2, 0)) -
+								Camera:WorldToViewportPoint(obj.PrimaryPart.Position - Vector3.new(size.X/2, size.Y/2, 0)))
+
+			data.Box.Size = Vector2.new(math.abs(screenSize.X), math.abs(screenSize.Y))
+			data.Box.Position = Vector2.new(screenPos.X - data.Box.Size.X/2, screenPos.Y - data.Box.Size.Y/2)
+			data.Box.Visible = true
+		else
+			data.Box.Visible = false
+		end
+	end
+end)
+
+-- Resetar todos
+function ESP:ClearAll()
+	for obj in pairs(ESP.Objects) do
 		self:Remove(obj)
 	end
 end
 
-function ESP:Toggle(state)
-	self.Enabled = state
-end
-
-RunService.RenderStepped:Connect(function()
-	if not ESP.Enabled then return end
-
-	for obj, esp in pairs(ESP.Objects) do
-		local part = (obj:IsA("Model") and obj.PrimaryPart) or (obj:IsA("BasePart") and obj)
-		if not part or not part:IsDescendantOf(workspace) then
-			ESP:Remove(obj)
-			continue
-		end
-
-		local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-		if not onScreen then
-			if esp.Tracer then esp.Tracer.Visible = false end
-			if esp.NameText then esp.NameText.Visible = false end
-			if esp.DistanceText then esp.DistanceText.Visible = false end
-			if esp.Outline then esp.Outline.Visible = false end
-			if esp.Box then
-				for _, line in pairs(esp.Box) do
-					line.Visible = false
-				end
-			end
-			continue
-		end
-
-		local color = esp.Settings.Color or Color3.new(1, 1, 1)
-
-		if esp.Tracer then
-			esp.Tracer.Visible = true
-			esp.Tracer.Color = color
-			esp.Tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-			esp.Tracer.To = Vector2.new(pos.X, pos.Y)
-		end
-
-		if esp.NameText then
-			esp.NameText.Visible = true
-			esp.NameText.Text = tostring(esp.Settings.Name or obj.Name)
-			esp.NameText.Position = Vector2.new(pos.X, pos.Y - 16)
-			esp.NameText.Color = color
-		end
-
-		if esp.DistanceText then
-			esp.DistanceText.Visible = true
-			esp.DistanceText.Text = tostring(GetDistance(part.Position)) .. "m"
-			esp.DistanceText.Position = Vector2.new(pos.X, pos.Y)
-			esp.DistanceText.Color = color
-		end
-
-		if esp.Box then
-			local size = part.Size
-			local corners = {
-				Camera:WorldToViewportPoint((part.CFrame * CFrame.new(-size.X/2, size.Y/2, -size.Z/2)).Position),
-				Camera:WorldToViewportPoint((part.CFrame * CFrame.new(size.X/2, size.Y/2, -size.Z/2)).Position),
-				Camera:WorldToViewportPoint((part.CFrame * CFrame.new(-size.X/2, -size.Y/2, -size.Z/2)).Position),
-				Camera:WorldToViewportPoint((part.CFrame * CFrame.new(size.X/2, -size.Y/2, -size.Z/2)).Position),
-			}
-
-			esp.Box.TopLeft.From = Vector2.new(corners[1].X, corners[1].Y)
-			esp.Box.TopLeft.To = Vector2.new(corners[2].X, corners[2].Y)
-
-			esp.Box.TopRight.From = Vector2.new(corners[2].X, corners[2].Y)
-			esp.Box.TopRight.To = Vector2.new(corners[4].X, corners[4].Y)
-
-			esp.Box.BottomRight.From = Vector2.new(corners[4].X, corners[4].Y)
-			esp.Box.BottomRight.To = Vector2.new(corners[3].X, corners[3].Y)
-
-			esp.Box.BottomLeft.From = Vector2.new(corners[3].X, corners[3].Y)
-			esp.Box.BottomLeft.To = Vector2.new(corners[1].X, corners[1].Y)
-
-			for _, line in pairs(esp.Box) do
-				line.Color = color
-				line.Visible = true
-			end
-		end
-
-		if esp.Outline then
-			esp.Outline.Visible = true
-			local size = part.Size
-			local cf = part.CFrame
-
-			local p1 = Camera:WorldToViewportPoint((cf * CFrame.new(-size.X/2, size.Y/2, -size.Z/2)).Position)
-			local p2 = Camera:WorldToViewportPoint((cf * CFrame.new(size.X/2, size.Y/2, -size.Z/2)).Position)
-			local p3 = Camera:WorldToViewportPoint((cf * CFrame.new(size.X/2, -size.Y/2, -size.Z/2)).Position)
-			local p4 = Camera:WorldToViewportPoint((cf * CFrame.new(-size.X/2, -size.Y/2, -size.Z/2)).Position)
-
-			esp.Outline.PointA = Vector2.new(p1.X, p1.Y)
-			esp.Outline.PointB = Vector2.new(p2.X, p2.Y)
-			esp.Outline.PointC = Vector2.new(p3.X, p3.Y)
-			esp.Outline.PointD = Vector2.new(p4.X, p4.Y)
-			esp.Outline.Color = color
-		end
+-- Ativar/Desativar ESP
+function ESP:SetEnabled(state)
+	ESP.Enabled = state
+	if not state then
+		ESP:ClearAll()
 	end
-end)
+end
 
 return ESP
