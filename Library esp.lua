@@ -1,211 +1,153 @@
--- ESP Library por dhsoares01
--- Suporte a Tracer, Outline, Box3D, Distance, Name via Loadstring
+--[[ 
+ESP Library by DH
+GitHub Compatible | Executável via loadstring
+https://github.com/seu-usuario/seu-repo/esp.lua
+]]
 
 local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
 local Players = game:GetService("Players")
+local Camera = workspace.CurrentCamera
+
 local LocalPlayer = Players.LocalPlayer
+local DrawingLib = {}
 
-local ESP = {}
-ESP.Objects = {}
-ESP.Enabled = true
-
-ESP.DefaultSettings = {
-	Name = "ESP",
-	ShowName = true,
-	ShowDistance = true,
-	ShowTracer = true,
-	ShowOutline = true,
-	ShowBox3D = true,
-	Color = Color3.fromRGB(0, 255, 0)
-}
-
-local function IsOnScreen(pos)
-	local vec, onScreen = Camera:WorldToViewportPoint(pos)
-	return onScreen, vec
+local function WorldToViewport(pos)
+	local viewportPos, onScreen = Camera:WorldToViewportPoint(pos)
+	return viewportPos, onScreen
 end
 
-local function CreateDrawing(class, props)
-	local obj = Drawing.new(class)
-	for i, v in pairs(props) do
-		obj[i] = v
-	end
-	return obj
-end
+local function createESP(obj, config)
+	local esp = {}
 
-local function CreateBillboard(target, settings)
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "_ESP_Billboard"
-	gui.Size = UDim2.new(0, 100, 0, 40)
-	gui.StudsOffset = Vector3.new(0, 3, 0)
-	gui.AlwaysOnTop = true
-	gui.Adornee = target
-	gui.Parent = target
+	-- Nome
+	esp.name = Drawing.new("Text")
+	esp.name.Size = 13
+	esp.name.Center = true
+	esp.name.Outline = true
+	esp.name.Font = 2
+	esp.name.Color = Color3.fromRGB(255, 255, 255)
+	esp.name.Text = config.Name or "Objeto"
 
-	if settings.ShowName then
-		local nameLabel = Instance.new("TextLabel")
-		nameLabel.Name = "Name"
-		nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
-		nameLabel.Position = UDim2.new(0, 0, 0, 0)
-		nameLabel.BackgroundTransparency = 1
-		nameLabel.TextColor3 = settings.Color
-		nameLabel.TextStrokeTransparency = 0
-		nameLabel.Text = settings.Name
-		nameLabel.TextScaled = true
-		nameLabel.Font = Enum.Font.SourceSansBold
-		nameLabel.Parent = gui
-	end
+	-- Distância
+	esp.distance = Drawing.new("Text")
+	esp.distance.Size = 13
+	esp.distance.Center = true
+	esp.distance.Outline = true
+	esp.distance.Font = 2
+	esp.distance.Color = Color3.fromRGB(200, 200, 200)
 
-	if settings.ShowDistance then
-		local distLabel = Instance.new("TextLabel")
-		distLabel.Name = "Distance"
-		distLabel.Size = UDim2.new(1, 0, 0.5, 0)
-		distLabel.Position = UDim2.new(0, 0, 0.5, 0)
-		distLabel.BackgroundTransparency = 1
-		distLabel.TextColor3 = settings.Color
-		distLabel.TextStrokeTransparency = 0
-		distLabel.Text = "0m"
-		distLabel.TextScaled = true
-		distLabel.Font = Enum.Font.SourceSans
-		distLabel.Parent = gui
-	end
+	-- Linha
+	esp.tracer = Drawing.new("Line")
+	esp.tracer.Thickness = 1.5
+	esp.tracer.Color = Color3.fromRGB(255, 255, 0)
 
-	return gui
-end
+	-- Caixa
+	esp.box = Drawing.new("Square")
+	esp.box.Thickness = 1.5
+	esp.box.Color = Color3.fromRGB(0, 255, 0)
+	esp.box.Filled = false
 
-function ESP:AddObject(target, settings)
-	settings = setmetatable(settings or {}, { __index = self.DefaultSettings })
-	if not target or not target:IsDescendantOf(workspace) then return end
+	-- Outline
+	esp.outline = Drawing.new("Square")
+	esp.outline.Thickness = 3
+	esp.outline.Color = Color3.fromRGB(0, 0, 0)
+	esp.outline.Filled = false
 
-	local espData = {
-		Target = target,
-		Settings = settings,
-		Drawings = {},
-		Highlight = nil,
-		Billboard = nil
-	}
-
-	-- Tracer
-	if settings.ShowTracer then
-		espData.Drawings.Tracer = CreateDrawing("Line", {
-			Thickness = 1.5,
-			Color = settings.Color,
-			Transparency = 1,
-			Visible = false
-		})
-	end
-
-	-- Box 3D
-	if settings.ShowBox3D then
-		espData.Drawings.Box = CreateDrawing("Square", {
-			Thickness = 1,
-			Color = settings.Color,
-			Transparency = 1,
-			Filled = false,
-			Visible = false
-		})
-	end
-
-	-- Outline (Highlight)
-	if settings.ShowOutline and (target:IsA("Model") or target:IsA("BasePart")) then
-		local hl = Instance.new("Highlight")
-		hl.Name = "_ESP_Highlight"
-		hl.FillColor = settings.Color
-		hl.OutlineColor = settings.Color
-		hl.FillTransparency = 0.7
-		hl.OutlineTransparency = 0
-		hl.Adornee = target
-		hl.Parent = target
-		espData.Highlight = hl
-	end
-
-	-- Billboard GUI para Name e Distance
-	if settings.ShowName or settings.ShowDistance then
-		local gui = CreateBillboard(target, settings)
-		espData.Billboard = gui
-	end
-
-	table.insert(self.Objects, espData)
-end
-
-function ESP:Clear()
-	for _, esp in pairs(self.Objects) do
-		for _, draw in pairs(esp.Drawings) do
-			draw:Remove()
-		end
-		if esp.Highlight then
-			pcall(function() esp.Highlight:Destroy() end)
-		end
-		if esp.Billboard then
-			pcall(function() esp.Billboard:Destroy() end)
-		end
-	end
-	self.Objects = {}
-end
-
-RunService.RenderStepped:Connect(function()
-	if not ESP.Enabled then return end
-	for _, esp in pairs(ESP.Objects) do
-		local target = esp.Target
-
-		-- SUPORTE A DISTÂNCIA DE MODELS E BASEPARTS
-		local root
-		if target:IsA("BasePart") then
-			root = target
-		elseif target:IsA("Model") then
-			root = target:FindFirstChild("HumanoidRootPart") or target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
-		end
-		if not root then continue end
-
-		local onscreen, pos = IsOnScreen(root.Position)
-		if not onscreen then
-			for _, draw in pairs(esp.Drawings) do
-				draw.Visible = false
+	local function remove()
+		for _, v in pairs(esp) do
+			if typeof(v) == "Drawing" then
+				v:Remove()
 			end
-			continue
+		end
+	end
+
+	local function update()
+		if not obj or not obj:IsDescendantOf(workspace) then
+			remove()
+			return false
 		end
 
-		local dist = (Camera.CFrame.Position - root.Position).Magnitude
-		local settings = esp.Settings
+		local pos = obj.Position or (obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart)
+		if not pos then return end
+
+		local cf = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChild("HumanoidRootPart")) and obj:GetBoundingBox()
+		local size = cf and cf.Size or Vector3.new(2, 3, 1)
+
+		local rootPos = obj.Position or (obj:IsA("Model") and cf.Position)
+		local screenPos, onScreen = WorldToViewport(rootPos)
+		if not onScreen then
+			for _, v in pairs(esp) do if typeof(v) == "Drawing" then v.Visible = false end end
+			return true
+		end
+
+		local dist = (Camera.CFrame.Position - rootPos).Magnitude
+
+		-- Nome
+		if config.Name then
+			esp.name.Position = Vector2.new(screenPos.X, screenPos.Y - 15)
+			esp.name.Text = config.Name
+			esp.name.Visible = true
+		end
+
+		-- Distância
+		if config.ShowDistance then
+			esp.distance.Text = string.format("%.1f m", dist)
+			esp.distance.Position = Vector2.new(screenPos.X, screenPos.Y + 15)
+			esp.distance.Visible = true
+		end
 
 		-- Tracer
-		if settings.ShowTracer and esp.Drawings.Tracer then
-			local line = esp.Drawings.Tracer
-			line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-			line.To = Vector2.new(pos.X, pos.Y)
-			line.Visible = true
+		if config.Tracer then
+			esp.tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+			esp.tracer.To = Vector2.new(screenPos.X, screenPos.Y)
+			esp.tracer.Visible = true
 		end
 
-		-- Box 3D
-		if settings.ShowBox3D and esp.Drawings.Box then
-			local box = esp.Drawings.Box
-			local size = Vector2.new(50 / (dist / 10), 80 / (dist / 10))
-			box.Size = size
-			box.Position = Vector2.new(pos.X - size.X / 2, pos.Y - size.Y / 2)
-			box.Visible = true
+		-- Caixa
+		if config.Box then
+			local width = size.X * (1000 / dist)
+			local height = size.Y * (1000 / dist)
+			local topLeft = Vector2.new(screenPos.X - width / 2, screenPos.Y - height / 2)
+
+			if config.Outline then
+				esp.outline.Position = topLeft
+				esp.outline.Size = Vector2.new(width, height)
+				esp.outline.Visible = true
+			end
+
+			esp.box.Position = topLeft
+			esp.box.Size = Vector2.new(width, height)
+			esp.box.Visible = true
 		end
 
-		-- Atualizar Highlight
-		if settings.ShowOutline and (not esp.Highlight or not esp.Highlight.Parent) then
-			local hl = Instance.new("Highlight")
-			hl.Name = "_ESP_Highlight"
-			hl.FillColor = settings.Color
-			hl.OutlineColor = settings.Color
-			hl.FillTransparency = 0.7
-			hl.OutlineTransparency = 0
-			hl.Adornee = target
-			hl.Parent = target
-			esp.Highlight = hl
-		end
+		return true
+	end
 
-		-- Atualizar distância no Billboard
-		if esp.Billboard then
-			local dLabel = esp.Billboard:FindFirstChild("Distance")
-			if dLabel then
-				dLabel.Text = string.format("%.1f m", dist)
+	return { Update = update, Remove = remove }
+end
+
+return function(settings)
+	local espList = {}
+	local objects = settings.Objects or {}
+	local config = {
+		Name = settings.Name or "ESP",
+		Tracer = settings.Tracer or false,
+		Box = settings.Box or false,
+		Outline = settings.Outline or false,
+		ShowDistance = settings.ShowDistance or false
+	}
+
+	for _, obj in ipairs(objects) do
+		local esp = createESP(obj, config)
+		table.insert(espList, esp)
+	end
+
+	RunService.RenderStepped:Connect(function()
+		for i = #espList, 1, -1 do
+			local item = espList[i]
+			if not item.Update() then
+				table.remove(espList, i)
 			end
 		end
-	end
-end)
-
-return ESP
+	end)
+end
