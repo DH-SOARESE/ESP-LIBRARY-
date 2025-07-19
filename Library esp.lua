@@ -1,177 +1,138 @@
--- ESP Library by DH - Workspace Oriented
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
+--[[
+ESP Library by @seu-usuario
+Suporte: Tracer, Outline, Box Outline, Distance (metros), Nome
+Uso:
+local ESP = loadstring(game:HttpGet("https://raw.githubusercontent.com/seu-usuario/seu-repo/main/esp.lua"))()
+ESP:Add(workspace.Part1)
+]]
 
 local ESP = {}
-ESP.Enabled = true
+ESP.__index = ESP
+
 ESP.Objects = {}
+
 ESP.Settings = {
-	ShowTracer = true,
-	ShowBox = true,
-	ShowOutline = true,
-	ShowName = true,
-	ShowDistance = true,
-	Reference = "Bottom", -- "Bottom" or "Center"
-	Color = Color3.fromRGB(0, 255, 0),
-	Font = Enum.Font.SourceSansBold,
+    Tracer = true,
+    BoxOutline = true,
+    Outline = true,
+    Distance = true,
+    Name = true,
+    Color = Color3.fromRGB(255, 0, 0),
+    Font = Drawing.Fonts.UI,
+    UpdateRate = 1/60
 }
 
--- Utilidade
-local function isOnScreen(pos)
-	local _, onScreen = Camera:WorldToViewportPoint(pos)
-	return onScreen
+-- Criação de desenhos
+function ESP:CreateDrawing(obj)
+    local draw = {
+        Tracer = Drawing.new("Line"),
+        Box = Drawing.new("Square"),
+        Outline = Drawing.new("Square"),
+        Distance = Drawing.new("Text"),
+        Name = Drawing.new("Text"),
+        Target = obj
+    }
+
+    for _, d in pairs(draw) do
+        if typeof(d) == "Instance" then continue end
+        d.Visible = false
+        d.Color = self.Settings.Color
+        if d.ClassName == "Text" then
+            d.Size = 13
+            d.Center = true
+            d.Outline = true
+            d.OutlineColor = Color3.new(0, 0, 0)
+            d.Font = self.Settings.Font
+        elseif d.ClassName == "Line" then
+            d.Thickness = 1
+        elseif d.ClassName == "Square" then
+            d.Thickness = 1
+            d.Filled = false
+        end
+    end
+
+    table.insert(self.Objects, draw)
 end
 
-local function getPosition(obj)
-	if obj:IsA("BasePart") then
-		return obj.Position
-	elseif obj:IsA("Model") and obj.PrimaryPart then
-		return obj.PrimaryPart.Position
-	elseif obj:IsA("Model") then
-		local parts = obj:GetDescendants()
-		for _, part in ipairs(parts) do
-			if part:IsA("BasePart") then
-				return part.Position
-			end
-		end
-	elseif obj:IsA("Attachment") then
-		return obj.WorldPosition
-	end
-	return Vector3.zero
+-- Atualização dos ESPs
+function ESP:Update()
+    local cam = workspace.CurrentCamera
+    for _, draw in ipairs(self.Objects) do
+        local obj = draw.Target
+        if not obj or not obj:IsDescendantOf(workspace) then
+            for _, d in pairs(draw) do
+                if typeof(d) == "Instance" then continue end
+                d.Visible = false
+                d:Remove()
+            end
+            continue
+        end
+
+        local pos, onScreen = cam:WorldToViewportPoint(obj.Position)
+        if onScreen then
+            local distance = (cam.CFrame.Position - obj.Position).Magnitude
+
+            if self.Settings.Tracer then
+                draw.Tracer.From = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
+                draw.Tracer.To = Vector2.new(pos.X, pos.Y)
+                draw.Tracer.Visible = true
+            end
+
+            if self.Settings.BoxOutline then
+                local size = 30 / distance * 3
+                draw.Box.Size = Vector2.new(size, size)
+                draw.Box.Position = Vector2.new(pos.X - size / 2, pos.Y - size / 2)
+                draw.Box.Visible = true
+
+                draw.Outline.Size = Vector2.new(size + 2, size + 2)
+                draw.Outline.Position = Vector2.new(pos.X - size / 2 - 1, pos.Y - size / 2 - 1)
+                draw.Outline.Visible = true
+                draw.Outline.Color = Color3.new(0,0,0)
+            end
+
+            if self.Settings.Distance then
+                draw.Distance.Text = string.format("%.1f m", distance)
+                draw.Distance.Position = Vector2.new(pos.X, pos.Y + 20)
+                draw.Distance.Visible = true
+            end
+
+            if self.Settings.Name then
+                draw.Name.Text = obj.Name
+                draw.Name.Position = Vector2.new(pos.X, pos.Y - 20)
+                draw.Name.Visible = true
+            end
+        else
+            for _, d in pairs(draw) do
+                if typeof(d) == "Instance" then continue end
+                d.Visible = false
+            end
+        end
+    end
 end
 
-local function round(n)
-	return math.floor(n * 10 + 0.5) / 10
-end
-
--- Adicionar ESP
-function ESP:Add(obj, customName)
-	if not obj or ESP.Objects[obj] then return end
-
-	local name = customName or obj.Name
-	local holder = Drawing.new("Text")
-	holder.Center = true
-	holder.Outline = true
-	holder.Size = 13
-	holder.Font = Drawing.Fonts.UI
-	holder.Color = ESP.Settings.Color
-
-	local distance = Drawing.new("Text")
-	distance.Center = true
-	distance.Outline = true
-	distance.Size = 12
-	distance.Font = Drawing.Fonts.UI
-	distance.Color = Color3.fromRGB(200, 200, 200)
-
-	local tracer = Drawing.new("Line")
-	tracer.Thickness = 1.5
-	tracer.Color = ESP.Settings.Color
-
-	local box = Drawing.new("Square")
-	box.Thickness = 1.5
-	box.Color = ESP.Settings.Color
-	box.Filled = false
-
-	ESP.Objects[obj] = {
-		Object = obj,
-		Name = holder,
-		Distance = distance,
-		Tracer = tracer,
-		Box = box,
-	}
-end
-
--- Remover ESP
-function ESP:Remove(obj)
-	local esp = ESP.Objects[obj]
-	if esp then
-		for _, v in pairs(esp) do
-			if typeof(v) == "table" or typeof(v) == "Instance" then continue end
-			if typeof(v) == "userdata" and v.Remove then pcall(function() v:Remove() end) end
-		end
-		ESP.Objects[obj] = nil
-	end
-end
-
--- Loop de renderização
-RunService.RenderStepped:Connect(function()
-	if not ESP.Enabled then return end
-
-	for obj, data in pairs(ESP.Objects) do
-		local ok, pos = pcall(getPosition, obj)
-		if not ok or not pos then ESP:Remove(obj) continue end
-
-		local screenPos, visible = Camera:WorldToViewportPoint(pos)
-		if not visible then
-			data.Name.Visible = false
-			data.Distance.Visible = false
-			data.Tracer.Visible = false
-			data.Box.Visible = false
-			continue
-		end
-
-		local localPlayer = Players.LocalPlayer
-		local char = localPlayer.Character
-		local root = char and char:FindFirstChild("HumanoidRootPart")
-
-		local dist = root and round((root.Position - pos).Magnitude) or 0
-
-		-- Tracer
-		if ESP.Settings.ShowTracer then
-			data.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-			data.Tracer.To = Vector2.new(screenPos.X, screenPos.Y)
-			data.Tracer.Visible = true
-		else
-			data.Tracer.Visible = false
-		end
-
-		-- Nome
-		if ESP.Settings.ShowName then
-			data.Name.Position = Vector2.new(screenPos.X, screenPos.Y - 15)
-			data.Name.Text = obj.Name
-			data.Name.Visible = true
-		else
-			data.Name.Visible = false
-		end
-
-		-- Distância
-		if ESP.Settings.ShowDistance then
-			data.Distance.Position = Vector2.new(screenPos.X, screenPos.Y)
-			data.Distance.Text = "(" .. dist .. "m)"
-			data.Distance.Visible = true
-		else
-			data.Distance.Visible = false
-		end
-
-		-- Box
-		if ESP.Settings.ShowBox and obj:IsA("Model") and obj.PrimaryPart then
-			local size = obj:GetExtentsSize()
-			local screenSize = (Camera:WorldToViewportPoint(obj.PrimaryPart.Position + Vector3.new(size.X/2, size.Y/2, 0)) -
-								Camera:WorldToViewportPoint(obj.PrimaryPart.Position - Vector3.new(size.X/2, size.Y/2, 0)))
-
-			data.Box.Size = Vector2.new(math.abs(screenSize.X), math.abs(screenSize.Y))
-			data.Box.Position = Vector2.new(screenPos.X - data.Box.Size.X/2, screenPos.Y - data.Box.Size.Y/2)
-			data.Box.Visible = true
-		else
-			data.Box.Visible = false
-		end
-	end
+-- Loop contínuo
+task.spawn(function()
+    while task.wait(ESP.Settings.UpdateRate) do
+        ESP:Update()
+    end
 end)
 
--- Resetar todos
-function ESP:ClearAll()
-	for obj in pairs(ESP.Objects) do
-		self:Remove(obj)
-	end
+-- Adiciona um objeto à ESP
+function ESP:Add(object)
+    if typeof(object) == "Instance" and object:IsA("BasePart") then
+        self:CreateDrawing(object)
+    end
 end
 
--- Ativar/Desativar ESP
-function ESP:SetEnabled(state)
-	ESP.Enabled = state
-	if not state then
-		ESP:ClearAll()
-	end
+-- Limpa tudo
+function ESP:Clear()
+    for _, draw in ipairs(self.Objects) do
+        for _, d in pairs(draw) do
+            if typeof(d) == "Instance" then continue end
+            d:Remove()
+        end
+    end
+    self.Objects = {}
 end
 
 return ESP
